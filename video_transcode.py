@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 import platform
 from dataclasses import dataclass
@@ -9,9 +8,6 @@ from colorama import Fore, init
 from pymediainfo import MediaInfo
 
 init(autoreset=True)  # Initialize colorama
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 ALLOWED_TARGET_FILE_EXTENSIONS = [".mp4", ".mkv"]
 
