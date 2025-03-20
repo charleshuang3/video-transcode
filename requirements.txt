@@ -1,0 +1,4 @@
+colorama
+inquirer
+pymediainfo
+pytest
