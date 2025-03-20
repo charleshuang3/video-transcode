@@ -1,6 +1,7 @@
 import argparse
 import os
 import platform
+import subprocess
 from dataclasses import dataclass
 
 import inquirer
@@ -261,14 +262,17 @@ if __name__ == "__main__":
 
     print(Fore.LIGHTGREEN_EX + "====== Step 3: Copy input file to tmp dir ==========")
     if not input_file.startswith(transcode_dir):
+        # Use rsync to copy the file
+        command = f"rsync -av --progress '{input_file}' '{transcode_dir}'"
         try:
-            # Use rsync to copy the file
-            command = f"rsync -av --progress '{input_file}' '{transcode_dir}'"
-            os.system(command)
-            input_file = os.path.join(transcode_dir, os.path.basename(input_file))
-        except Exception as e:
+            subprocess.run(
+                command, shell=True, check=True, capture_output=False, text=True
+            )
+        except subprocess.CalledProcessError as e:
             print(f"❌ Failed to copy {input_file} to {transcode_dir}. {e}")
             exit(1)
+
+        input_file = os.path.join(transcode_dir, os.path.basename(input_file))
 
     print("✅ Input file copied to tmp dir")
 
@@ -361,8 +365,10 @@ if __name__ == "__main__":
 
     ffmpeg_cmd = f"ffmpeg -i '{input_file}' {ffmpeg_args} '{temp_target_file}'"
     try:
-        os.system(ffmpeg_cmd)
-    except Exception as e:
+        subprocess.run(
+            ffmpeg_cmd, shell=True, check=True, capture_output=False, text=True
+        )
+    except subprocess.CalledProcessError as e:
         print(f"❌ Failed to transcode. {e}")
         exit(1)
 
@@ -372,8 +378,8 @@ if __name__ == "__main__":
     try:
         # Use rsync to copy the file
         command = f"rsync -av --progress '{temp_target_file}' '{target_file}'"
-        os.system(command)
-    except Exception as e:
+        subprocess.run(command, shell=True, check=True, capture_output=False, text=True)
+    except subprocess.CalledProcessError as e:
         print(f"❌ Failed to copy {temp_target_file} to {target_file}. {e}")
         exit(1)
 
