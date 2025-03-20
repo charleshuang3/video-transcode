@@ -201,15 +201,13 @@ def create_transcode_directory():
     if os.path.exists(os.path.join(home_dir, "tmp")):
         if not os.path.exists(tmp_transcode_dir):
             os.makedirs(tmp_transcode_dir)
-            return tmp_transcode_dir
-        else:
-            return tmp_transcode_dir
+
+        return tmp_transcode_dir
     else:
         if not os.path.exists(tmp_dir):
             os.makedirs(tmp_dir)
-            return tmp_dir
-        else:
-            return tmp_dir
+
+        return tmp_dir
 
 
 def is_m_chip_mac():
@@ -362,7 +360,7 @@ if __name__ == "__main__":
 
     print(Fore.LIGHTGREEN_EX + "====== Step 6: start ffmpeg transcode ==============")
     temp_target_file = os.path.join(
-        transcode_dir + "transcoded-" + os.path.basename(target_file)
+        transcode_dir, "transcoded-" + os.path.basename(target_file)
     )
 
     ffmpeg_cmd = f"ffmpeg -i '{input_file}' {ffmpeg_args} '{temp_target_file}'"
