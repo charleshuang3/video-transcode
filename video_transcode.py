@@ -10,6 +10,7 @@ from pymediainfo import MediaInfo
 
 init(autoreset=True)  # Initialize colorama
 
+# Allowed file extensions for the target file.
 ALLOWED_TARGET_FILE_EXTENSIONS = [".mp4", ".mkv"]
 
 
@@ -23,15 +24,19 @@ MODERN_VIDEO_CODECS = [
     "HEVC",  # H.265
     "AVC",  # H.264
 ]
+# Modern audio codecs.
 MODERN_AUDIO_CODECS = ["AAC"]
 
 # Default output video codec
 DEFAULT_VIDEO_CODEC = "HEVC"
+# Default audio codec for transcoding.
 DEFAULT_AUDIO_CODEC = "AAC"
 
 # audio bitrate in Xk
+# Allowed audio bitrates in kbps.
 AUDIO_BITRATES = [96, 128, 192, 256, 320, 400]
 
+# Mapping of codecs to their corresponding FFmpeg encoders.
 CODEC_TO_ENDCODER = {
     "AVC": "h264_videotoolbox",
     "HEVC": "hevc_videotoolbox",
@@ -41,6 +46,10 @@ CODEC_TO_ENDCODER = {
 
 @dataclass
 class FFMPEGArgs:
+    """
+    Dataclass to store FFmpeg arguments.
+    """
+
     # -c:v HEVC -> h265_videotoolbox
     video_codec: str
     # -b:v 6M
@@ -55,6 +64,9 @@ class FFMPEGArgs:
     audio_bitrate: int
 
     def __str__(self):
+        """
+        Returns the FFmpeg arguments as a string.
+        """
         s = f"-c:v {CODEC_TO_ENDCODER[self.video_codec]} -b:v {int(self.video_bitrate)}M -pix_fmt {self.video_pixel_format}"
         if self.audio_copy:
             s += " -c:a copy"
@@ -65,6 +77,10 @@ class FFMPEGArgs:
 
 @dataclass
 class Video:
+    """
+    Dataclass to store video metadata.
+    """
+
     bitrate: int
     format: str
     width: int
@@ -75,6 +91,12 @@ class Video:
     bit_depth: int
 
     def normalize_bitrate(self) -> int:
+        """
+        Normalizes the video bitrate to the nearest megabit, rounding up.
+
+        Returns:
+            int: Normalized video bitrate in Mbps.
+        """
         # video bitrate in M
         bitrate = self.bitrate / 1000 / 1000
         return bitrate + 1
@@ -82,10 +104,20 @@ class Video:
 
 @dataclass
 class Audio:
+    """
+    Dataclass to store audio metadata.
+    """
+
     bitrate: int
     format: str
 
     def normalize_bitrate(self) -> int:
+        """
+        Normalizes the audio bitrate to the nearest allowed value.
+
+        Returns:
+            int: Normalized audio bitrate in kbps.
+        """
         # audio bitrate in k
         bitrate = self.bitrate / 1000
         for it in AUDIO_BITRATES:
@@ -100,10 +132,17 @@ class Audio:
 
 @dataclass
 class VideoMetadata:
+    """
+    Dataclass to store video and audio metadata.
+    """
+
     video: Video
     audio: Audio
 
     def __str__(self):
+        """
+        Returns a string representation of the video and audio metadata.
+        """
         return (
             f"Video Info:\n"
             f"  Audio Bitrate: {self.audio.bitrate}\n"
@@ -119,6 +158,12 @@ class VideoMetadata:
         )
 
     def to_ffmpeg_args(self) -> FFMPEGArgs:
+        """
+        Converts the video and audio metadata to FFmpeg arguments.
+
+        Returns:
+            FFMPEGArgs: FFmpeg arguments.
+        """
         args = FFMPEGArgs(
             video_codec=DEFAULT_VIDEO_CODEC,
             video_bitrate=self.video.normalize_bitrate(),
@@ -142,6 +187,15 @@ class VideoMetadata:
 
 
 def get_media_info(file_path) -> VideoMetadata:
+    """
+    Retrieves video and audio metadata from a media file.
+
+    Args:
+        file_path (str): Path to the media file.
+
+    Returns:
+        VideoMetadata: Video and audio metadata.
+    """
     media_info = MediaInfo.parse(file_path)
 
     audio_tracks = media_info.audio_tracks
@@ -190,7 +244,13 @@ def get_media_info(file_path) -> VideoMetadata:
     )
 
 
-def create_transcode_directory():
+def create_transcode_directory() -> str:
+    """
+    Creates a temporary directory for transcoding.
+
+    Returns:
+        str: Path to the temporary transcode directory.
+    """
     home_dir = os.path.expanduser("~")
     tmp_transcode_dir = os.path.join(home_dir, "tmp", "transcode")
     tmp_dir = "/tmp/transcode"
@@ -207,21 +267,157 @@ def create_transcode_directory():
         return tmp_dir
 
 
-def is_m_chip_mac():
+def is_m_chip_mac() -> bool:
     """Checks if the current machine is an Apple Silicon (M-chip) Mac."""
     return platform.system() == "Darwin" and platform.machine() in ("arm64", "aarch64")
 
 
-if __name__ == "__main__":
+def parse_arguments():
+    """Handles argument parsing."""
     parser = argparse.ArgumentParser(description="Transcode video files.")
     parser.add_argument(
         "-it", "--interactive", action="store_true", help="Enable interactive mode"
     )
     parser.add_argument("-i", "--input", help="Input file path", required=True)
     parser.add_argument("target", help="Target file path")
+    return parser.parse_args()
 
-    args = parser.parse_args()
 
+def validate_input_file(input_file):
+    """Checks input file existence."""
+    if not os.path.exists(input_file):
+        print(f"❌ Input file {input_file} does not exist.")
+        exit(1)
+    print("✅ Input file exists")
+
+
+def validate_target_file(target_file):
+    """Validates target directory and extension."""
+    target_file_dir = os.path.dirname(target_file)
+    if not os.path.exists(target_file_dir):
+        print(f"❌ Target file directory {target_file_dir} does not exist.")
+        exit(1)
+    print("✅ Target file directory exists")
+
+    target_file_ext = os.path.splitext(target_file)[1]
+    if target_file_ext not in ALLOWED_TARGET_FILE_EXTENSIONS:
+        print(
+            f"❌ Target file extension {target_file_ext} is not allowed. Allowed extensions are {ALLOWED_TARGET_FILE_EXTENSIONS}"
+        )
+        exit(1)
+    print("✅ Target file extension allowed")
+
+
+def copy_input_file(input_file, transcode_dir):
+    """Copies the input file to the transcode directory."""
+    if not input_file.startswith(transcode_dir):
+        command = f"rsync -av --progress '{input_file}' '{transcode_dir}'"
+        try:
+            subprocess.run(
+                command, shell=True, check=True, capture_output=False, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to copy {input_file} to {transcode_dir}. {e}")
+            exit(1)
+        return os.path.join(transcode_dir, os.path.basename(input_file))
+    return input_file
+
+
+def get_user_preferences(video_metadata, ffmpeg_args):
+    """Gets user preferences for ffmpeg arguments in interactive mode."""
+    questions = [
+        inquirer.List(
+            "video_codec",
+            message=f"Video Codec: {video_metadata.video.format} ->",
+            choices=MODERN_VIDEO_CODECS,
+        ),
+        inquirer.Text(
+            "video_bitrate",
+            message=f"Video Bitrate: {video_metadata.video.bitrate / 1000}k -> M",
+            default=str(int(ffmpeg_args.video_bitrate)),
+        ),
+        inquirer.Text(
+            "video_pixel_format",
+            message=f"Video Pixel Format (leave it empty to not change): {ffmpeg_args.video_pixel_format} ->",
+        ),
+        inquirer.Confirm(
+            "audio_copy",
+            message=f"Copy original audio track [{video_metadata.audio.format} {video_metadata.audio.bitrate / 1000}k]",
+            default=ffmpeg_args.audio_copy,
+        ),
+    ]
+
+    answers = inquirer.prompt(questions)
+    ffmpeg_args.video_codec = answers["video_codec"]
+    ffmpeg_args.video_bitrate = int(answers["video_bitrate"])
+
+    if answers["video_pixel_format"]:
+        ffmpeg_args.video_pixel_format = answers["video_pixel_format"]
+
+    ffmpeg_args.audio_copy = answers["audio_copy"]
+
+    if not ffmpeg_args.audio_copy:
+        questions = [
+            inquirer.List(
+                "audio_codec",
+                message=f"Audio Codec: {video_metadata.video.format} ->",
+                choices=MODERN_AUDIO_CODECS,
+            ),
+            inquirer.Text(
+                "audio_bitrate",
+                message=f"Audio Bitrate: {video_metadata.audio.bitrate / 1000}k -> k",
+                default=str(int(ffmpeg_args.audio_bitrate)),
+            ),
+        ]
+        answers = inquirer.prompt(questions)
+        ffmpeg_args.audio_codec = answers["audio_codec"]
+        ffmpeg_args.audio_bitrate = int(answers["audio_bitrate"])
+
+    return ffmpeg_args
+
+
+def get_ffmpeg_command(video_metadata, interactive):
+    """Builds the ffmpeg command string."""
+    ffmpeg_args = video_metadata.to_ffmpeg_args()
+
+    if interactive:
+        ffmpeg_args = get_user_preferences(video_metadata, ffmpeg_args)
+
+    print(f"{ffmpeg_args}")
+
+    if interactive:
+        questions = [inquirer.Confirm("continue", message="Looks Good?")]
+        answers = inquirer.prompt(questions)
+        if not answers["continue"]:
+            exit(0)
+    return ffmpeg_args
+
+
+def run_ffmpeg(ffmpeg_cmd):
+    """Executes the ffmpeg command."""
+    try:
+        subprocess.run(
+            ffmpeg_cmd, shell=True, check=True, capture_output=False, text=True
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to transcode. {e}")
+        exit(1)
+    print("✅ Transcoded")
+
+
+def copy_transcoded_file(temp_target_file, target_file):
+    """Copies the transcoded file to the target location."""
+    try:
+        command = f"rsync -av --progress '{temp_target_file}' '{target_file}'"
+        subprocess.run(command, shell=True, check=True, capture_output=False, text=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to copy {temp_target_file} to {target_file}. {e}")
+        exit(1)
+    print("✅ Transcoded file copied to target")
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
     transcode_dir = create_transcode_directory()
 
     print(Fore.LIGHTGREEN_EX + "====== Step 0: Check it is running on M-Chip Mac ===")
@@ -232,57 +428,19 @@ if __name__ == "__main__":
         exit(1)
 
     print(Fore.LIGHTGREEN_EX + "====== Step 1: Check if input file exists ==========")
-    input_file = args.input
-
-    if not os.path.exists(input_file):
-        print(f"❌ Input file {input_file} does not exist.")
-        exit(1)
-    print("✅ Input file exists")
+    validate_input_file(args.input)
 
     print(Fore.LIGHTGREEN_EX + "====== Step 2: Check if target file ================")
-    target_file = args.target
-
-    # Check if the target file directory exists
-    target_file_dir = os.path.dirname(target_file)
-    if not os.path.exists(target_file_dir):
-        print(f"❌ Target file directory {target_file_dir} does not exist.")
-        exit(1)
-
-    print("✅ Target file directory exists")
-
-    # Check if target file extension is in the allowed list
-    target_file_ext = os.path.splitext(target_file)[1]
-    if target_file_ext not in ALLOWED_TARGET_FILE_EXTENSIONS:
-        print(
-            f"❌ Target file extension {target_file_ext} is not allowed. Allowed extensions are {ALLOWED_TARGET_FILE_EXTENSIONS}"
-        )
-        exit(1)
-
-    print("✅ Target file extension allowed")
+    validate_target_file(args.target)
 
     print(Fore.LIGHTGREEN_EX + "====== Step 3: Copy input file to tmp dir ==========")
-    if not input_file.startswith(transcode_dir):
-        # Use rsync to copy the file
-        command = f"rsync -av --progress '{input_file}' '{transcode_dir}'"
-        try:
-            subprocess.run(
-                command, shell=True, check=True, capture_output=False, text=True
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Failed to copy {input_file} to {transcode_dir}. {e}")
-            exit(1)
-
-        input_file = os.path.join(transcode_dir, os.path.basename(input_file))
-
-    print("✅ Input file copied to tmp dir")
+    input_file = copy_input_file(args.input, transcode_dir)
 
     print(Fore.LIGHTGREEN_EX + "====== Step 4: Check media info of input file ======")
-
     video_metadata = None
     try:
         video_metadata = get_media_info(input_file)
         print(f"{video_metadata}")
-
     except Exception as e:
         print(f"❌ Could not retrieve media info for {input_file}. {e}")
         exit(1)
@@ -299,88 +457,17 @@ if __name__ == "__main__":
             exit(0)
 
     print(Fore.LIGHTGREEN_EX + "====== Step 5: Prepare ffmpeg command ==============")
-    ffmpeg_args = video_metadata.to_ffmpeg_args()
-
-    if interactive:
-        questions = [
-            inquirer.List(
-                "video_codec",
-                message=f"Video Codec: {video_metadata.video.format} ->",
-                choices=MODERN_VIDEO_CODECS,
-            ),
-            inquirer.Text(
-                "video_bitrate",
-                message=f"Video Bitrate: {video_metadata.video.bitrate / 1000}k -> M",
-                default=str(int(ffmpeg_args.video_bitrate)),
-            ),
-            inquirer.Text(
-                "video_pixel_format",
-                message=f"Video Pixel Format (leave it empty to not change): {ffmpeg_args.video_pixel_format} ->",
-            ),
-            inquirer.Confirm(
-                "audio_copy",
-                message=f"Copy original audio track [{video_metadata.audio.format} {video_metadata.audio.bitrate / 1000}k]",
-                default=ffmpeg_args.audio_copy,
-            ),
-        ]
-
-        answers = inquirer.prompt(questions)
-        ffmpeg_args.video_codec = answers["video_codec"]
-        ffmpeg_args.video_bitrate = int(answers["video_bitrate"])
-
-        if answers["video_pixel_format"]:
-            ffmpeg_args.video_pixel_format = answers["video_pixel_format"]
-
-        ffmpeg_args.audio_copy = answers["audio_copy"]
-
-        if not ffmpeg_args.audio_copy:
-            questions = [
-                inquirer.List(
-                    "audio_codec",
-                    message=f"Audio Codec: {video_metadata.video.format} ->",
-                    choices=MODERN_AUDIO_CODECS,
-                ),
-                inquirer.Text(
-                    "audio_bitrate",
-                    message=f"Audio Bitrate: {video_metadata.audio.bitrate / 1000}k -> k",
-                    default=str(int(ffmpeg_args.audio_bitrate)),
-                ),
-            ]
-            answers = inquirer.prompt(questions)
-            ffmpeg_args.audio_codec = answers["audio_codec"]
-            ffmpeg_args.audio_bitrate = int(answers["audio_bitrate"])
-
-    print(f"{ffmpeg_args}")
-
-    if interactive:
-        questions = [inquirer.Confirm("continue", message="Looks Good?")]
-        answers = inquirer.prompt(questions)
-        if not answers["continue"]:
-            exit(0)
+    ffmpeg_args = get_ffmpeg_command(video_metadata, interactive)
 
     print(Fore.LIGHTGREEN_EX + "====== Step 6: start ffmpeg transcode ==============")
     temp_target_file = os.path.join(
-        transcode_dir, "transcoded-" + os.path.basename(target_file)
+        transcode_dir, "transcoded-" + os.path.basename(args.target)
     )
 
-    ffmpeg_cmd = f"ffmpeg -i '{input_file}' {ffmpeg_args} '{temp_target_file}'"
-    try:
-        subprocess.run(
-            ffmpeg_cmd, shell=True, check=True, capture_output=False, text=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to transcode. {e}")
-        exit(1)
-
-    print("✅ Transcoded")
+    ffmpeg_cmd = (
+        f"ffmpeg -hide_banner -i '{input_file}' {ffmpeg_args} '{temp_target_file}'"
+    )
+    run_ffmpeg(ffmpeg_cmd)
 
     print(Fore.LIGHTGREEN_EX + "====== Step 7: copy transcoded file to target ======")
-    try:
-        # Use rsync to copy the file
-        command = f"rsync -av --progress '{temp_target_file}' '{target_file}'"
-        subprocess.run(command, shell=True, check=True, capture_output=False, text=True)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to copy {temp_target_file} to {target_file}. {e}")
-        exit(1)
-
-    print("✅ Transcoded file copied to target")
+    copy_transcoded_file(temp_target_file, args.target)
