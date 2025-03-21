@@ -22,16 +22,27 @@ from dataclasses import dataclass
 
 from pymediainfo import MediaInfo
 
+mimetypes.add_type("video/x-matroska", ".mkv")
+mimetypes.add_type("video/x-m4v", ".m4v")
+mimetypes.add_type("video/x-ms-wmv", ".wmv")
+mimetypes.add_type("video/mp2t", ".ts")
+
+
 SUPPORTED_VIDEO_CODECS = [
     "HEVC",  # H.265
     "AVC",  # H.264
+    "MPEG-4 Visual",  # MPEG-4
 ]
 SUPPORTED_AUDIO_CODECS = [
     "FLAC",
+    "PCM",
+    "MPEG Audio",
     "AAC",
     "TRUEHD",  # Dolby TrueHD
     "AC3",  # Dolby Digit
+    "AC-3",  # Dolby Digit
     "EAC3",  # Dolby Digit
+    "E-AC-3",  # Dolby Digit
     "DTS",  # Dolby Digit
 ]
 
